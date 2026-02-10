@@ -29,9 +29,8 @@ class MediaAnalysis(Base):
     # ML Model Outputs
     detected_location = Column(String(100))
     is_safe_media = Column(Boolean)
-    is_safe_caption = Column(Boolean)
-    confidence_score = Column(Float)
-    model_version = Column(String(20))
+    confidence_score_location = Column(Float)
+    confidence_score_nsfw = Column(Float)
     
     # Status Tracking
     status = Column(
@@ -54,8 +53,7 @@ class TextAnalysis(Base):
     post_ref_id = Column(BigInteger, nullable=False, index=True)
     
     # ML Model Outputs
-    extracted_tags = Column(Text)
-    is_spam = Column(Boolean, default=False)
+    tags = Column(Text)
     sentiment_score = Column(Float)
     
     # Status Tracking
@@ -76,7 +74,7 @@ class PlaceSummary(Base):
     __tablename__ = "place_summaries"
 
     summary_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    place_ref_id = Column(BigInteger, nullable=False, index=True)
+    post_id = Column(BigInteger, nullable=False, index=True)
     summary_text = Column(Text)
     generated_at = Column(DateTime(timezone=True), server_default=func.now())
     is_active = Column(Boolean, default=True)
