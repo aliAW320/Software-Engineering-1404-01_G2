@@ -1,30 +1,41 @@
 import json
-import torch
-import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from utils.hf_key import CLIENT
 
 class CommentClassifier:
-    def __init__(self, model_name="HooshvareLab/bert-base-parsbert-uncasedو", model_path="comment_model.pt"):
+    def __init__(self, model="openai/gpt-oss-120b"):
         self.text_id2label = {
             0: "clean",
             1: "spam",
-            2: "obscene",
-            3: "spamobscene",
-            4: "hate",
-            5: "hateobscene"
+            2: "hate",
+            3: "sexual",
+            4: "violent",
+            5: "insult",
         }
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=6).to(self.device)
+        self.role = """
+            You are an AI text classifier for Persian content. 
+            Your job is to detect whether a sentence belongs to the following categories: clean, spam, hate, sexual, violent, insult. 
+            For each class, return a confidence score between 0 and 1. 
+            Return the output strictly as a JSON dictionary in the format:
+            {"clean": 0.0, "spam": 0.0, "hate": 0.0, "sexual": 0.0, "violent": 0.0, "insult": 0.0}
+            """
         
-        if torch.cuda.is_available():
-            self.model.load_state_dict(torch.load(model_path))
-        else:
-            self.model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-        self.model.eval()
-    @torch.no_grad()
-    def predict(self, comment):
-        inputs = self.tokenizer(comment, return_tensors="pt", truncation=True, padding='max_length', max_length=128).to(self.device)
-        logits = self.model(**inputs)
-        return {"prediction":torch.argmax(logits['logits'], dim=1).item()}
+        self.model = model
+
+    def predict(self, text):
+        completion = CLIENT.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self.role},
+                {"role": "user", "content": text},
+            ],
+        )
+
+        raw_response = completion.choices[0].message["content"]
+        
+        try:
+            confidence_dict = json.loads(raw_response)
+        except json.JSONDecodeError:
+            confidence_dict = {label: None for label in self.text_id2label.values()}
+        
+        return confidence_dict
