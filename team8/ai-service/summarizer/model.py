@@ -38,7 +38,7 @@ class CommentSummarizer:
             ],
         )
 
-        raw_response = completion.choices[0].message["content"]
+        raw_response = completion.choices[0].message.content
 
         try:
             summary_dict = json.loads(raw_response)
