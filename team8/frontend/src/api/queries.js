@@ -35,8 +35,10 @@ export const fetchPostReplies = (id) => api.get(`/posts/${id}/replies/`).then((r
 export const fetchRatings = (place) =>
   api.get('/ratings/', { params: { place } }).then((r) => unpage(r.data))
 export const fetchMyRatings = () => api.get('/ratings/my/').then((r) => r.data)
-export const fetchNotifications = () => api.get('/notifications/').then((r) => r.data)
+export const fetchNotifications = () => api.get('/notifications/').then((r) => unpage(r.data))
 export const fetchUnreadCount = () => api.get('/notifications/unread-count/').then((r) => r.data)
+export const markNotificationRead = (id) => api.post(`/notifications/${id}/read/`).then((r) => r.data)
+export const markAllNotificationsRead = () => api.post('/notifications/read-all/').then((r) => r.data)
 
 // Feed (latest posts across places)
 export const fetchFeed = () => api.get('/posts/').then((r) => unpage(r.data))
@@ -50,6 +52,7 @@ export const rejectPost = (id, reason = 'Rejected by admin') =>
 export const approveMedia = (id) => api.post(`/moderation/media/${id}/approve/`)
 export const rejectMedia = (id, reason = 'Rejected by admin') =>
   api.post(`/moderation/media/${id}/reject/`, { reason })
+export const fetchReports = () => api.get('/reports/').then((r) => unpage(r.data))
 
 // Votes
 export const votePost = async (id, is_like) => {
@@ -71,3 +74,11 @@ export const votePost = async (id, is_like) => {
   }
 }
 export const removeVote = (id) => api.delete(`/posts/${id}/vote/`)
+
+// Reports
+export const reportPost = (postId, reason) =>
+  api.post('/reports/', {
+    target_type: 'POST',
+    reported_post: postId,
+    reason: reason || 'Reported by user',
+  }).then((r) => r.data)

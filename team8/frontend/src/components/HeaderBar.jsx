@@ -1,11 +1,22 @@
 import { useState } from 'react'
 import AuthModal from './auth/AuthModal'
 import { useAuth } from '../hooks/useAuth'
+import NotificationPanel from './notifications/NotificationPanel'
+import { useQuery } from '@tanstack/react-query'
+import { fetchUnreadCount } from '../api/queries'
 
-function HeaderBar({ onShowAuth }) {
+function HeaderBar({ onShowAuth, hideAdminLink = false }) {
   const { user, isAuthenticated, logout } = useAuth()
   const [authOpen, setAuthOpen] = useState(false)
   const [mode, setMode] = useState('login')
+  const [notifOpen, setNotifOpen] = useState(false)
+
+  const unreadQuery = useQuery({
+    queryKey: ['notifications', 'unread'],
+    queryFn: fetchUnreadCount,
+    enabled: isAuthenticated,
+    staleTime: 30000,
+  })
 
   const openAuth = (m) => {
     if (onShowAuth) {
@@ -28,7 +39,7 @@ function HeaderBar({ onShowAuth }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {isAuthenticated && user?.is_admin && (
+          {isAuthenticated && user?.is_admin && !hideAdminLink && (
             <a className="btn btn-ghost" href="/admin">
               بخش ادمین
             </a>
@@ -44,7 +55,27 @@ function HeaderBar({ onShowAuth }) {
             </>
           ) : (
             <>
-              <div className="pill-ghost">{user?.username}</div>
+              <button className="btn btn-ghost" onClick={() => setNotifOpen(true)} style={{ position: 'relative' }}>
+                🔔
+                {unreadQuery.data?.unread > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    background: '#f7c948',
+                    color: '#0f1b2d',
+                    borderRadius: 999,
+                    padding: '2px 6px',
+                    fontSize: 11,
+                    fontWeight: 800,
+                  }}>
+                    {unreadQuery.data.unread}
+                  </span>
+                )}
+              </button>
+              <div className="pill-ghost" onClick={() => setNotifOpen(true)} style={{ cursor: 'pointer' }}>
+                {user?.username}
+              </div>
               <button className="btn btn-ghost" onClick={logout}>
                 خروج
               </button>
@@ -54,6 +85,7 @@ function HeaderBar({ onShowAuth }) {
       </header>
 
       {!onShowAuth && authOpen && <AuthModal mode={mode} onClose={() => setAuthOpen(false)} />}
+      {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}
     </>
   )
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchPostDetail, fetchPostReplies, votePost, removeVote } from '../api/queries'
+import { fetchPostDetail, fetchPostReplies, votePost, removeVote, reportPost } from '../api/queries'
 import { api } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import RatingStars from './RatingStars'
@@ -11,6 +11,9 @@ function PostModal({ postId, onClose, onRequireAuth }) {
   const queryClient = useQueryClient()
   const [replyText, setReplyText] = useState('')
   const [file, setFile] = useState(null)
+  const [reportMode, setReportMode] = useState(false)
+  const [reportText, setReportText] = useState('')
+  const [reportDone, setReportDone] = useState(false)
   const anchorId = 'post-modal-anchor'
   const { data: post } = useQuery({
     queryKey: ['post', postId],
@@ -71,6 +74,21 @@ function PostModal({ postId, onClose, onRequireAuth }) {
     },
   })
 
+  const reportMutation = useMutation({
+    mutationFn: async () => {
+      if (!isAuthenticated) {
+        onRequireAuth?.('login')
+        throw new Error('auth required')
+      }
+      await reportPost(postId, reportText)
+    },
+    onSuccess: () => {
+      setReportDone(true)
+      setReportMode(false)
+      setReportText('')
+    },
+  })
+
   if (!post) return null
 
   return (
@@ -115,6 +133,39 @@ function PostModal({ postId, onClose, onRequireAuth }) {
               👎 {post.dislike_count}
             </button>
             <span className="pill-ghost">پاسخ‌ها {post.reply_count}</span>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 700 }}>گزارش تخلف</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', width: '100%', justifyContent: 'flex-end' }}>
+            {reportMode && (
+              <textarea
+                className="input"
+                style={{ maxWidth: 360 }}
+                rows={2}
+                placeholder="دلیل گزارش را بنویسید..."
+                value={reportText}
+                onChange={(e) => setReportText(e.target.value)}
+              />
+            )}
+            {reportDone && <span className="pill">ارسال شد</span>}
+            <button
+              className="btn btn-ghost"
+              onClick={() => setReportMode((p) => !p)}
+              style={{ padding: '10px 14px' }}
+            >
+              {reportMode ? 'انصراف' : 'گزارش این پست'}
+            </button>
+            {reportMode && (
+              <button
+                className="btn btn-primary"
+                disabled={!reportText || reportMutation.isLoading}
+                onClick={() => reportMutation.mutate()}
+              >
+                ارسال گزارش
+              </button>
+            )}
           </div>
         </div>
 
