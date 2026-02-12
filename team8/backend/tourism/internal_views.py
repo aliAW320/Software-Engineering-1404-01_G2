@@ -29,6 +29,23 @@ def _decide_status(score: float) -> str:
     return "APPROVED"
 
 
+def _normalize_place_name(name: str | None) -> str:
+    """Normalize AI/user place labels for a tolerant equality check."""
+    if not name:
+        return ""
+    normalized = str(name).replace("_", " ").replace("\u200c", " ").strip()
+    return " ".join(normalized.split())
+
+
+def _propagate_media_status_to_posts(media: Media, decided: str):
+    """Keep posts linked to this media in sync with media AI status."""
+    posts_with_media = Post.objects.filter(media=media, deleted_at__isnull=True)
+    for post in posts_with_media:
+        post.media_ai_status = decided
+        post.save(update_fields=["media_ai_status"])
+        _reconcile_post_status(post)
+
+
 # Permission
 
 class IsInternalService(BasePermission):
@@ -126,12 +143,20 @@ def media_ai_verdict(request, media_id):
 
     score = float(score)
     decided = _decide_status(score)
-    media.status = decided
     media.ai_confidence = score
-    if decided == "REJECTED":
-        media.rejection_reason = "AI image moderation: inappropriate content detected"
+    update_fields = ["ai_confidence"]
 
-    media.save(update_fields=["status", "ai_confidence", "rejection_reason"])
+    # Moderation can always force reject; otherwise keep tagger decision in control.
+    if decided == "REJECTED":
+        media.status = "REJECTED"
+        media.rejection_reason = "AI image moderation: inappropriate content detected"
+        update_fields.extend(["status", "rejection_reason"])
+    elif decided == "PENDING_ADMIN":
+        if media.status != "REJECTED":
+            media.status = "PENDING_ADMIN"
+            update_fields.append("status")
+
+    media.save(update_fields=update_fields)
     log_activity(None, "AI_MEDIA_VERDICT", target_id=str(media_id), metadata={"decided": decided, "score": score})
 
     # Notify media owner
@@ -142,12 +167,8 @@ def media_ai_verdict(request, media_id):
     elif decided == "PENDING_ADMIN":
         create_notification(media.user, "Media under review", "Your media is being reviewed by a moderator.")
 
-    # Also update any posts that reference this media
-    posts_with_media = Post.objects.filter(media=media, deleted_at__isnull=True)
-    for post in posts_with_media:
-        post.media_ai_status = decided
-        post.save(update_fields=["media_ai_status"])
-        _reconcile_post_status(post)
+    # Propagate the effective media status (not raw decided value).
+    _propagate_media_status_to_posts(media, media.status)
 
     return Response({"media_id": str(media_id), "status": decided})
 
@@ -162,10 +183,29 @@ def media_tag(request, media_id):
         return Response({"error": "media not found"}, status=status.HTTP_404_NOT_FOUND)
 
     detected_place = request.data.get("detected_place")
-    confidence = request.data.get("confidence", 0.0)
+    confidence = float(request.data.get("confidence", 0.0) or 0.0)
+
+    if media.mime_type.startswith("image/") and media.status != "REJECTED":
+        picked = _normalize_place_name(media.place.title if media.place else "")
+        detected = _normalize_place_name(detected_place)
+        decided = "APPROVED" if (confidence > 0.6 and detected and detected == picked) else "PENDING_ADMIN"
+        media.status = decided
+        media.save(update_fields=["status"])
+        _propagate_media_status_to_posts(media, decided)
+    else:
+        decided = media.status
 
     log_activity(None, "AI_MEDIA_TAG", target_id=str(media_id), metadata={
-        "detected_place": detected_place, "confidence": confidence,
+        "detected_place": detected_place,
+        "confidence": confidence,
+        "picked_place": media.place.title if media.place else None,
+        "decided": decided,
     })
 
-    return Response({"media_id": str(media_id), "detected_place": detected_place})
+    return Response({
+        "media_id": str(media_id),
+        "detected_place": detected_place,
+        "confidence": confidence,
+        "picked_place": media.place.title if media.place else None,
+        "status": media.status,
+    })
