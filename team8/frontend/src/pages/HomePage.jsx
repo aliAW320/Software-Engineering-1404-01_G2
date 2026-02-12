@@ -104,9 +104,9 @@ function HomePage() {
         </div>
 
         {selectedId ? (
-          <PlaceDetail placeId={selectedId} />
+          <PlaceDetail placeId={selectedId} onRequireAuth={requireAuth} />
         ) : (
-          <FeedSection onOpenPost={(pid) => setPostModalId(pid)} />
+          <FeedSection onOpenPost={(pid) => setPostModalId(pid)} onRequireAuth={requireAuth} />
         )}
       </div>
 
