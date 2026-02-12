@@ -10,6 +10,7 @@ import {
   rejectPost,
   approveMedia,
   rejectMedia,
+  fetchReports,
 } from '../api/queries'
 import { timeAgo } from '../utils/format'
 
@@ -20,6 +21,7 @@ function AdminPage() {
 
   const postsQ = useQuery({ queryKey: ['moderation', 'posts'], queryFn: fetchPendingPosts, enabled: isAuthenticated && user?.is_admin })
   const mediaQ = useQuery({ queryKey: ['moderation', 'media'], queryFn: fetchPendingMedia, enabled: isAuthenticated && user?.is_admin })
+  const reportsQ = useQuery({ queryKey: ['reports'], queryFn: fetchReports, enabled: isAuthenticated && user?.is_admin })
 
   const approvePostMut = useMutation({
     mutationFn: (id) => approvePost(id),
@@ -52,9 +54,12 @@ function AdminPage() {
 
   return (
     <div className="shell">
-      <HeaderBar />
+      <HeaderBar hideAdminLink />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <a className="btn btn-ghost" href="/">بازگشت به صفحه اصلی</a>
+      </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
         <section className="card">
           <SectionTitle title="پست‌های منتظر بررسی" />
           {postsQ.isLoading && <div className="empty">در حال بارگذاری...</div>}
@@ -115,6 +120,29 @@ function AdminPage() {
                     رد
                   </button>
                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="card">
+          <SectionTitle title="گزارش‌های کاربران" />
+          {reportsQ.isLoading && <div className="empty">در حال بارگذاری...</div>}
+          {!reportsQ.isLoading && (!reportsQ.data || reportsQ.data.length === 0) && <div className="empty">گزارشی نیست.</div>}
+          <div className="grid" style={{ gap: 10 }}>
+            {reportsQ.data?.map((r) => (
+              <div key={r.report_id} className="card" style={{ background: '#1c2f4b' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontWeight: 700 }}>گزارش #{r.report_id}</div>
+                  <div className="pill-ghost">{timeAgo(r.created_at)}</div>
+                </div>
+                <div className="pill-ghost" style={{ marginTop: 6 }}>
+                  نوع: {r.target_type === 'POST' ? 'پست' : 'رسانه'}
+                </div>
+                <p style={{ margin: '8px 0', color: '#dbe6f5', lineHeight: 1.7 }}>{r.reason}</p>
+                {r.reported_post && <div className="pill-ghost">پست: {r.reported_post}</div>}
+                {r.reported_media && <div className="pill-ghost">رسانه: {r.reported_media}</div>}
+                <div className="pill-ghost" style={{ marginTop: 6 }}>وضعیت: {r.status || 'OPEN'}</div>
               </div>
             ))}
           </div>

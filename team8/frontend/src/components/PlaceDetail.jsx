@@ -14,9 +14,11 @@ function PlaceDetail({ placeId, onRequireAuth }) {
   const [comment, setComment] = useState('')
   const [postError, setPostError] = useState('')
   const [postModalId, setPostModalId] = useState(null)
-  const openPost = (pid) => {
+  const openPost = (pid, el) => {
+    if (el && el.scrollIntoView) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
     setPostModalId(pid)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const voteMutation = useMutation({
     mutationFn: async ({ postId, likeVal }) => {
@@ -155,7 +157,7 @@ function PlaceDetail({ placeId, onRequireAuth }) {
                 <PostItem
                   key={p.post_id}
                   post={p}
-                  onOpen={() => openPost(p.post_id)}
+                  onOpen={(el) => openPost(p.post_id, el)}
                   onVote={(likeVal) => voteMutation.mutate({ postId: p.post_id, likeVal })}
                   voting={voteMutation.isLoading}
                 />
@@ -257,13 +259,18 @@ function StatCard({ label, value, accent }) {
 
 function PostItem({ post, onOpen, onVote, voting }) {
   return (
-    <div className="card" style={{ padding: 14, cursor: 'pointer' }} onClick={onOpen}>
+    <div
+      className="card"
+      style={{ padding: 14, cursor: 'pointer' }}
+      onClick={(e) => onOpen?.(e.currentTarget)}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 700 }}>{post.username}</div>
         <div className="pill-ghost">{timeAgo(post.created_at)}</div>
       </div>
       <p style={{ margin: '10px 0 8px', lineHeight: 1.7, color: '#dbe6f5' }}>{post.content}</p>
-      <div className="list-inline">
+      <div className="list-inline" style={{ flexWrap: 'wrap', gap: 6 }}>
+        {post.media && <span className="pill">📎 تصویر</span>}
         <button
           className="btn btn-ghost"
           style={{ padding: '6px 10px' }}
