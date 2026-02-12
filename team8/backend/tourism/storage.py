@@ -13,6 +13,7 @@ class MinIOStorage:
 
     def __init__(self):
         self._client = None
+        self._public_client = None
         self._bucket_ensured = False
 
     @property
@@ -27,6 +28,21 @@ class MinIOStorage:
                 region_name='us-east-1',
             )
         return self._client
+
+    @property
+    def public_client(self):
+        """Client used only for presigned URLs (can point to gateway)."""
+        if self._public_client is None:
+            endpoint = settings.S3_PUBLIC_ENDPOINT or settings.S3_ENDPOINT_URL
+            self._public_client = boto3.client(
+                's3',
+                endpoint_url=endpoint,
+                aws_access_key_id=settings.S3_ACCESS_KEY,
+                aws_secret_access_key=settings.S3_SECRET_KEY,
+                config=Config(signature_version='s3v4'),
+                region_name='us-east-1',
+            )
+        return self._public_client
 
     @property
     def bucket(self):
@@ -73,7 +89,7 @@ class MinIOStorage:
 
     def get_presigned_url(self, object_key: str, expiration: int = 3600) -> str | None:
         try:
-            return self.client.generate_presigned_url(
+            return self.public_client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': self.bucket, 'Key': object_key},
                 ExpiresIn=expiration,

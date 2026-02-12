@@ -5,13 +5,13 @@ uvicorn[standard]>=0.27,<1.0
 
 # ML / DL  (CPU-only wheels)
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.6.0+cpu                    # image_tagging ConvNeXt inference
-torchvision==0.21.0+cpu             # convnext_base model + transforms
+torch==2.10.0+cpu
+torchvision==0.25.0+cpu
 transformers>=4.36,<5.0             # HF pipeline (NSFW image-classification)
 huggingface-hub>=0.20,<1.0          # InferenceClient (LLM API for comment/summarizer)
 
 # Image processing
-Pillow>=10.2,<11.0
+Pillow>=12.0.0,<13.0
 
 # Database
 sqlalchemy>=2.0,<3.0
@@ -25,3 +25,4 @@ minio>=7.2,<8.0                     # MinIO client in utils/image.py
 
 # Config
 python-dotenv>=1.0,<2.0
+

@@ -98,6 +98,7 @@ S3_ENDPOINT_URL = env("S3_ENDPOINT_URL", default="http://localhost:9000")
 S3_ACCESS_KEY = env("S3_ACCESS_KEY", default="minioadmin")
 S3_SECRET_KEY = env("S3_SECRET_KEY", default="minioadmin123")
 S3_BUCKET_NAME = env("S3_BUCKET_NAME", default="team8-media")
+S3_PUBLIC_ENDPOINT = env("S3_PUBLIC_ENDPOINT", default=None)
 
 # Upload limits
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -105,7 +106,7 @@ ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"]
 
 # AI Service
-AI_SERVICE_URL = env("AI_SERVICE_URL", default="http://localhost:8002")
+AI_SERVICE_URL = env("AI_SERVICE_URL", default="http://localhost:8001")
 INTERNAL_API_KEY = env("INTERNAL_API_KEY", default="team8-internal-secret-change-me")
 
 # AI Moderation thresholds
