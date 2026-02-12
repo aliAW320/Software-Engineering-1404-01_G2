@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchPostDetail, fetchPostReplies } from '../api/queries'
+import { fetchPostDetail, fetchPostReplies, votePost, removeVote } from '../api/queries'
 import { api } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import RatingStars from './RatingStars'
@@ -11,6 +11,7 @@ function PostModal({ postId, onClose, onRequireAuth }) {
   const queryClient = useQueryClient()
   const [replyText, setReplyText] = useState('')
   const [file, setFile] = useState(null)
+  const anchorId = 'post-modal-anchor'
   const { data: post } = useQuery({
     queryKey: ['post', postId],
     queryFn: () => fetchPostDetail(postId),
@@ -47,14 +48,42 @@ function PostModal({ postId, onClose, onRequireAuth }) {
       setReplyText('')
       setFile(null)
       queryClient.invalidateQueries({ queryKey: ['post', postId, 'replies'] })
+      queryClient.invalidateQueries({ queryKey: ['post', postId] })
+      queryClient.invalidateQueries({ queryKey: ['posts', post?.place] })
+    },
+  })
+
+  const voteMutation = useMutation({
+    mutationFn: async (likeVal) => {
+      if (!isAuthenticated) {
+        onRequireAuth?.('login')
+        throw new Error('auth required')
+      }
+      if (post?.user_vote === likeVal) {
+        await removeVote(postId)
+      } else {
+        await votePost(postId, likeVal)
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post', postId] })
+      queryClient.invalidateQueries({ queryKey: ['posts', post?.place] })
     },
   })
 
   if (!post) return null
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(4,10,20,0.78)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 30, padding: 16 }}>
-      <div className="glass" style={{ width: '100%', maxWidth: 720, maxHeight: '90vh', overflow: 'auto', padding: 20 }}>
+    <div
+      id={anchorId}
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(4,10,20,0.78)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 30, padding: 16 }}
+    >
+      <div
+        className="glass"
+        style={{ width: '100%', maxWidth: 720, maxHeight: '90vh', overflow: 'auto', padding: 20 }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
           <div style={{ fontSize: 18, fontWeight: 800 }}>پست #{post.post_id}</div>
           <button className="btn btn-ghost" onClick={onClose}>بستن</button>
@@ -68,9 +97,23 @@ function PostModal({ postId, onClose, onRequireAuth }) {
           {post.media_detail?.url && (
             <img src={post.media_detail.url} alt="media" style={{ width: '100%', maxHeight: 320, objectFit: 'cover', marginTop: 8 }} />
           )}
-          <div className="list-inline" style={{ marginTop: 10 }}>
-            <span className="pill-ghost">👍 {post.like_count}</span>
-            <span className="pill-ghost">👎 {post.dislike_count}</span>
+          <div className="list-inline" style={{ marginTop: 10, gap: 6 }}>
+            <button
+              className="btn btn-ghost"
+              style={{ background: post.user_vote === true ? 'rgba(74,194,154,0.2)' : undefined }}
+              onClick={() => voteMutation.mutate(true)}
+              disabled={voteMutation.isLoading}
+            >
+              👍 {post.like_count}
+            </button>
+            <button
+              className="btn btn-ghost"
+              style={{ background: post.user_vote === false ? 'rgba(247,82,82,0.15)' : undefined }}
+              onClick={() => voteMutation.mutate(false)}
+              disabled={voteMutation.isLoading}
+            >
+              👎 {post.dislike_count}
+            </button>
             <span className="pill-ghost">پاسخ‌ها {post.reply_count}</span>
           </div>
         </div>
@@ -95,6 +138,9 @@ function PostModal({ postId, onClose, onRequireAuth }) {
 
         <div className="card" style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>پاسخ‌ها</div>
+          {post.reply_count > 0 && (!replies || replies.length === 0) && (
+            <div className="pill-ghost" style={{ marginBottom: 8 }}>پاسخ‌ها در انتظار تایید هستند.</div>
+          )}
           {replies?.length ? (
             <div className="grid" style={{ gap: 10 }}>
               {replies.map((r) => (

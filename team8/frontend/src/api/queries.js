@@ -50,3 +50,24 @@ export const rejectPost = (id, reason = 'Rejected by admin') =>
 export const approveMedia = (id) => api.post(`/moderation/media/${id}/approve/`)
 export const rejectMedia = (id, reason = 'Rejected by admin') =>
   api.post(`/moderation/media/${id}/reject/`, { reason })
+
+// Votes
+export const votePost = async (id, is_like) => {
+  try {
+    const res = await api.post(`/posts/${id}/vote/`, { is_like })
+    return res.data
+  } catch (err) {
+    // Some deployments reject POST; try alternate shapes
+    if (err?.response?.status === 405) {
+      // try without trailing slash
+      const alt = await api.post(`/posts/${id}/vote`, { is_like })
+      return alt.data
+    }
+    if (err?.response?.status === 404) {
+      const res = await api.put(`/posts/${id}/vote/`, { is_like })
+      return res.data
+    }
+    throw err
+  }
+}
+export const removeVote = (id) => api.delete(`/posts/${id}/vote/`)

@@ -1,19 +1,36 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchPlace, fetchPlaceStats, fetchRatings, fetchPlacePosts, fetchPlaceMedia } from '../api/queries'
+import { fetchPlace, fetchPlaceStats, fetchRatings, fetchPlacePosts, fetchPlaceMedia, votePost, removeVote } from '../api/queries'
 import { api } from '../api/client'
 import RatingStars from './RatingStars'
 import { shortNumber, timeAgo } from '../utils/format'
 import { useAuth } from '../hooks/useAuth'
 import PostModal from './PostModal'
 
-function PlaceDetail({ placeId }) {
+function PlaceDetail({ placeId, onRequireAuth }) {
   const queryClient = useQueryClient()
   const { isAuthenticated } = useAuth()
   const [ratingValue, setRatingValue] = useState(5)
   const [comment, setComment] = useState('')
   const [postError, setPostError] = useState('')
   const [postModalId, setPostModalId] = useState(null)
+  const openPost = (pid) => {
+    setPostModalId(pid)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const voteMutation = useMutation({
+    mutationFn: async ({ postId, likeVal }) => {
+      if (!isAuthenticated) {
+        onRequireAuth?.('login')
+        throw new Error('auth required')
+      }
+      await votePost(postId, likeVal)
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['posts', placeId] })
+      queryClient.invalidateQueries({ queryKey: ['post', vars.postId] })
+    },
+  })
 
   const enabled = !!placeId
   const { data: place, isLoading } = useQuery({
@@ -135,7 +152,13 @@ function PlaceDetail({ placeId }) {
           {posts?.length ? (
             <div className="grid" style={{ gap: 12 }}>
               {posts.map((p) => (
-                <PostItem key={p.post_id} post={p} onOpen={() => setPostModalId(p.post_id)} />
+                <PostItem
+                  key={p.post_id}
+                  post={p}
+                  onOpen={() => openPost(p.post_id)}
+                  onVote={(likeVal) => voteMutation.mutate({ postId: p.post_id, likeVal })}
+                  voting={voteMutation.isLoading}
+                />
               ))}
             </div>
           ) : (
@@ -232,7 +255,7 @@ function StatCard({ label, value, accent }) {
   )
 }
 
-function PostItem({ post, onOpen }) {
+function PostItem({ post, onOpen, onVote, voting }) {
   return (
     <div className="card" style={{ padding: 14, cursor: 'pointer' }} onClick={onOpen}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -241,8 +264,22 @@ function PostItem({ post, onOpen }) {
       </div>
       <p style={{ margin: '10px 0 8px', lineHeight: 1.7, color: '#dbe6f5' }}>{post.content}</p>
       <div className="list-inline">
-        <span className="pill-ghost">👍 {post.like_count}</span>
-        <span className="pill-ghost">👎 {post.dislike_count}</span>
+        <button
+          className="btn btn-ghost"
+          style={{ padding: '6px 10px' }}
+          onClick={(e) => { e.stopPropagation(); onVote?.(true) }}
+          disabled={voting}
+        >
+          👍 {post.like_count}
+        </button>
+        <button
+          className="btn btn-ghost"
+          style={{ padding: '6px 10px' }}
+          onClick={(e) => { e.stopPropagation(); onVote?.(false) }}
+          disabled={voting}
+        >
+          👎 {post.dislike_count}
+        </button>
         <span className="pill-ghost">پاسخ‌ها {post.reply_count}</span>
       </div>
     </div>
