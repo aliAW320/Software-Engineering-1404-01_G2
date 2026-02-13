@@ -33,6 +33,6 @@ If you change `S3_BUCKET_NAME`, also update `gateway.conf` bucket location so pr
 
 ## Running behind the parent (app404) stack
 - The compose file joins the external network `app404_net` (created by the root project) so it can be reached from the parent stack without extra host ports.
-- Host port mapping uses `${PUBLIC_PORT}` and also honors `${TEAM_PORT}` (used by `linux_scripts/up-team.sh`). Set `S3_PUBLIC_ENDPOINT` to `http://localhost:${TEAM_PORT:-PUBLIC_PORT}` so presigned URLs stay on the same host/port.
+- Host port mapping uses `${PUBLIC_PORT}` and also honors `${TEAM_PORT}` (used by `linux_scripts/up-team.sh`). Set `S3_PUBLIC_ENDPOINT` to `http://localhost:8000` (the parent core port). The backend now auto-prefixes `/team8` on returned presigned URLs so they route through the parent app while keeping the signed path intact for MinIO.
 - To expose at `http://localhost:8000/team8/` through the parent gateway, add an upstream/location in the parent reverse proxy (or nginx) that forwards `/team8/`, `/team8/api/`, `/team8/ai/`, and `/team8-media/` to the `gateway` service on the shared `app404_net`. The service hostname is `gateway`.
 - See `parent-nginx-team8.conf` for a minimal nginx snippet you can drop into the parent stack.

@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from .models import User
 from .utils import log_activity
+from django.views.decorators.csrf import csrf_exempt
 
 
 def hash_password(password: str) -> str:
@@ -39,6 +40,7 @@ def decode_jwt(token: str) -> dict | None:
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def register(request):
     """Register new user"""
     username = request.data.get('username', '').strip()
@@ -97,6 +99,7 @@ def register(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def login(request):
     """Login user"""
     username = request.data.get('username', '').strip()
@@ -148,6 +151,7 @@ def login(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def logout(request):
     """Logout user"""
     response = Response({'message': 'logged out successfully'})
@@ -157,6 +161,7 @@ def logout(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def verify_token(request):
     """Verify JWT token from cookie"""
     token = request.COOKIES.get('access_token')

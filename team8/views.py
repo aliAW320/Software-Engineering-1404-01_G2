@@ -8,7 +8,6 @@ import os
 import urllib.request
 import urllib.error
 from django.http import StreamingHttpResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
 
 # Default host: service name inside app404_net
 GATEWAY_ORIGIN = os.environ.get("TEAM8_GATEWAY_ORIGIN", "http://gateway")
@@ -18,14 +17,20 @@ def _build_target(path, query):
     # Incoming path already excludes the /team8/ prefix
     if path.startswith("/"):
         path = path[1:]
+
+    # Special-case media so the path matches the MinIO-signed URL (/team8-media/…)
+    if path.startswith("team8-media/"):
+        target_path = f"/{path}"
+    else:
+        target_path = f"/team8/{path}"
+
     base = GATEWAY_ORIGIN.rstrip("/")
-    url = f"{base}/team8/{path}"
+    url = f"{base}{target_path}"
     if query:
         url = f"{url}?{query}"
     return url
 
 
-@csrf_exempt
 def gateway_proxy(request, path=""):
     target = _build_target(path, request.META.get("QUERY_STRING", ""))
 
@@ -44,8 +49,10 @@ def gateway_proxy(request, path=""):
         headers["X-Forwarded-Proto"] = request.META["HTTP_X_FORWARDED_PROTO"]
     else:
         headers["X-Forwarded-Proto"] = request.scheme
-    if request.content_type:
-        headers["Content-Type"] = request.content_type
+    # Preserve original content type (with boundary if multipart)
+    raw_ct = request.META.get("CONTENT_TYPE") or request.META.get("HTTP_CONTENT_TYPE")
+    if raw_ct:
+        headers["Content-Type"] = raw_ct
 
     req = urllib.request.Request(
         url=target,

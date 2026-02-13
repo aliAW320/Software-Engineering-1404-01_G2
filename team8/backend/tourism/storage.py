@@ -89,11 +89,12 @@ class MinIOStorage:
 
     def get_presigned_url(self, object_key: str, expiration: int = 3600) -> str | None:
         try:
-            return self.public_client.generate_presigned_url(
+            url = self.public_client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': self.bucket, 'Key': object_key},
                 ExpiresIn=expiration,
             )
+            return url
         except ClientError as exc:
             logger.warning("Presigned URL failed for %s: %s", object_key, exc)
             return None

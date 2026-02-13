@@ -99,6 +99,7 @@ S3_ACCESS_KEY = env("S3_ACCESS_KEY", default="minioadmin")
 S3_SECRET_KEY = env("S3_SECRET_KEY", default="minioadmin123")
 S3_BUCKET_NAME = env("S3_BUCKET_NAME", default="team8-media")
 S3_PUBLIC_ENDPOINT = env("S3_PUBLIC_ENDPOINT", default=None)
+S3_PUBLIC_PATH_PREFIX = env("S3_PUBLIC_PATH_PREFIX", default="")
 
 # Upload limits
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB

@@ -45,6 +45,9 @@ services:
       MINIO_REGION_NAME: ${MINIO_REGION_NAME:-us-east-1}
     volumes:
       - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     networks:
       - app404
 
@@ -56,14 +59,9 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       MINIO_BUCKET: ${S3_BUCKET_NAME:-team8-media}
     entrypoint: ["/bin/sh", "-c"]
-    command: >
-      until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
-        echo "Waiting for MinIO...";
-        sleep 2;
-      done;
-      mc mb -p "local/$MINIO_BUCKET" || true;
-      mc anonymous set download "local/$MINIO_BUCKET" || true;
-      exit 0;
+    command:
+      - >
+        until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do echo "Waiting for MinIO..."; sleep 2; done; mc mb -p "local/$MINIO_BUCKET" || true; mc anonymous set download "local/$MINIO_BUCKET" || true; exit 0
     depends_on:
       minio:
         condition: service_started
@@ -79,7 +77,8 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-team8-dev-secret-change-me}
       BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql://backend_user:backend_pass@backend-db:5432/backend_db}
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
-      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:${TEAM_PORT:-8080}/team8}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_PUBLIC_PATH_PREFIX: ${S3_PUBLIC_PATH_PREFIX:-}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-team8-media}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin123}
@@ -143,8 +142,6 @@ services:
       - backend
       - ai-service
       - minio
-    ports:
-      - "${PUBLIC_PORT:-${TEAM_PORT:-8080}}:80"
     networks:
       - app404
 
