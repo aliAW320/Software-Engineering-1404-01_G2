@@ -74,6 +74,7 @@ def callback_media_moderation(media_id: str, score: float):
 
 
 def callback_image_tagging(media_id: str, detected_place: str | None, confidence: float):
+    print(f"{detected_place},{confidence}")
     httpx.patch(
         f"{BACKEND_URL}/api/internal/media/{media_id}/tag/",
         json={"detected_place": detected_place, "confidence": confidence},
