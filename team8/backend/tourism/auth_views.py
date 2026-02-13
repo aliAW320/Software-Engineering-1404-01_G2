@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from .models import User
+from .permissions import _fetch_core_user
 
 
 def _proxy_core(path: str, request, method: str = "GET") -> HttpResponse:
@@ -81,51 +82,45 @@ def verify_token(request):
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def get_profile(request):
-    """Return core profile plus local username/id/admin info."""
+    """
+    Return local auth profile (always available with valid token) and
+    enrich with core profile fields when core /me is reachable.
+    """
+    user = _fetch_core_user(request)
+    if user is None:
+        return Response({"error": "not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    profile = {
+        "user_id": user.user_id,
+        "username": user.username,
+        "is_admin": user.is_admin,
+        "email": user.email,
+    }
+
+    # Best-effort enrichment from core profile; do not fail auth if core is slow/unreachable.
     url = settings.CORE_AUTH_ME_URL
     headers = {"Host": settings.CORE_HOST_HEADER}
     auth = request.META.get("HTTP_AUTHORIZATION")
     if auth:
         headers["Authorization"] = auth
+
     try:
         resp = requests.get(url, headers=headers, cookies=request.COOKIES, timeout=settings.CORE_AUTH_TIMEOUT)
+        if resp.status_code == 200:
+            try:
+                core_data = resp.json() if resp.content else {}
+            except ValueError:
+                core_data = {}
+            core_user = core_data.get("user", {}) if isinstance(core_data, dict) else {}
+            if isinstance(core_user, dict):
+                for field in ("first_name", "last_name", "age"):
+                    if core_user.get(field) is not None:
+                        profile[field] = core_user.get(field)
+                if not profile.get("email") and core_user.get("email"):
+                    profile["email"] = core_user.get("email")
     except requests.RequestException:
-        return Response({"error": "core auth unavailable"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        pass
 
-    core_data = resp.json() if resp.content else {}
-    if resp.status_code != 200:
-        return Response(core_data, status=resp.status_code)
-
-    # Decode access token locally to get core user id/email
-    token = request.COOKIES.get("access_token")
-    if not token and auth and auth.startswith("Bearer "):
-        token = auth.split(" ", 1)[1].strip()
-
-    core_id = None
-    email = None
-    if token:
-        try:
-            payload = jwt.decode(token, settings.CORE_JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-            core_id = payload.get("sub")
-            email = payload.get("email")
-        except Exception:
-            pass
-
-    user = None
-    if core_id:
-        user = User.objects.filter(core_user_id=core_id).first()
-    if user is None and email:
-        user = User.objects.filter(email=email).first()
-
-    if user:
-        core_data.setdefault("user", {})
-        core_data["user"].update(
-            {
-                "user_id": user.user_id,
-                "username": user.username,
-                "is_admin": user.is_admin,
-                "email": user.email or email or core_data["user"].get("email", ""),
-            }
-        )
-    return Response(core_data, status=resp.status_code)
+    return Response({"ok": True, "user": profile}, status=status.HTTP_200_OK)

@@ -1,8 +1,42 @@
 import uuid
 import jwt
+import requests
 from django.conf import settings
 from rest_framework.permissions import BasePermission
 from .models import User
+
+
+def _extract_auth(request):
+    auth_header = request.META.get("HTTP_AUTHORIZATION")
+    token = request.COOKIES.get("access_token")
+    if not token and auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    return token, auth_header
+
+
+def _verify_with_core(request, auth_header):
+    """
+    Fallback auth check against core service.
+    Useful when local JWT verification cannot decode the token (e.g. secret mismatch).
+    """
+    headers = {"Host": settings.CORE_HOST_HEADER}
+    if auth_header:
+        headers["Authorization"] = auth_header
+
+    try:
+        resp = requests.get(
+            settings.CORE_AUTH_VERIFY_URL,
+            headers=headers,
+            cookies=request.COOKIES,
+            timeout=settings.CORE_AUTH_TIMEOUT,
+        )
+    except requests.RequestException:
+        return None, ""
+
+    if resp.status_code != 200:
+        return None, ""
+
+    return resp.headers.get("X-User-Id"), (resp.headers.get("X-User-Email") or "")
 
 
 def _fetch_core_user(request):
@@ -13,27 +47,29 @@ def _fetch_core_user(request):
     if hasattr(request, "_core_user"):
         return request._core_user
 
-    auth_header = request.META.get("HTTP_AUTHORIZATION")
-    token = request.COOKIES.get("access_token")
-    if not token and auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split(" ", 1)[1].strip()
+    token, auth_header = _extract_auth(request)
 
     if not token:
+        # No bearer/cookie token; do not call core.
         request._core_user = None
         return None
 
+    core_id = None
+    email = ""
     try:
         payload = jwt.decode(
             token,
             settings.CORE_JWT_SECRET,
             algorithms=[settings.JWT_ALGORITHM],
         )
+        core_id = payload.get("sub")
+        email = payload.get("email") or ""
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        request._core_user = None
-        return None
-
-    core_id = payload.get("sub")
-    email = payload.get("email") or ""
+        # Fallback to core verify endpoint when local decode fails.
+        core_id, email = _verify_with_core(request, auth_header)
+        if not core_id and not email:
+            request._core_user = None
+            return None
 
     user = None
     if core_id:

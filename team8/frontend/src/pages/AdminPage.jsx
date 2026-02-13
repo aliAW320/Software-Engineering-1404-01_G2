@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import HeaderBar from '../components/HeaderBar'
 import { useAuth } from '../hooks/useAuth'
 import {
@@ -56,7 +56,7 @@ function AdminPage() {
     <div className="shell">
       <HeaderBar hideAdminLink />
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-        <a className="btn btn-ghost" href="/">بازگشت به صفحه اصلی</a>
+        <Link className="btn btn-ghost" to="/">بازگشت به صفحه اصلی</Link>
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>

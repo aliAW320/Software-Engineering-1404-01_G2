@@ -11,10 +11,12 @@ export function AuthProvider({ children }) {
     queryKey: ['auth', 'profile'],
     queryFn: async () => {
       try {
-        const res = await coreApi.get('/me/')
+        // Use Team8 profile endpoint so local fields (user_id/is_admin/username) are available.
+        const res = await api.get('/auth/profile/')
         return res.data.user || null
       } catch (err) {
-        if (err?.response?.status === 401) return null
+        const status = err?.response?.status
+        if (status === 401 || status === 403) return null
         throw err
       }
     },
