@@ -26,7 +26,7 @@ urlpatterns = [
     path('ping/', views.ping, name='team8-ping'),
     path('health/', views.health, name='team8-health'),
 
-    # Auth (standalone)
+    # Auth (proxied to core service)
     path('api/auth/register/', auth_views.register, name='auth-register'),
     path('api/auth/login/', auth_views.login, name='auth-login'),
     path('api/auth/logout/', auth_views.logout, name='auth-logout'),

@@ -1,198 +1,126 @@
-import bcrypt
-import jwt
-from datetime import timedelta, timezone, datetime
+import requests
+from http.cookies import SimpleCookie
 from django.conf import settings
-from django.db import IntegrityError
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 from .models import User
-from .utils import log_activity
+from .permissions import _fetch_core_user
 
 
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    return bcrypt.checkpw(password.encode(), password_hash.encode())
-
-
-def generate_jwt(user_id: int, email: str, username: str) -> str:
-    payload = {
-        'user_id': user_id,
-        'email': email,
-        'username': username,
-        'exp': datetime.now(timezone.utc) + timedelta(days=settings.JWT_EXP_DAYS),
-        'iat': datetime.now(timezone.utc),
-    }
-    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-
-
-def decode_jwt(token: str) -> dict | None:
+def _proxy_core(path: str, request, method: str = "GET") -> HttpResponse:
+    """Proxy a request to the core auth endpoints, preserving cookies and headers, forwarding Set-Cookie."""
+    url = settings.CORE_API_BASE.rstrip("/") + path
+    headers = {"Host": settings.CORE_HOST_HEADER}
+    auth = request.META.get("HTTP_AUTHORIZATION")
+    if auth:
+        headers["Authorization"] = auth
+    data = request.data if method != "GET" else None
     try:
-        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        return None
+        resp = requests.request(
+            method,
+            url,
+            headers=headers,
+            cookies=request.COOKIES,
+            json=data,
+            timeout=settings.CORE_AUTH_TIMEOUT,
+        )
+    except requests.RequestException:
+        return HttpResponse('{"error": "core auth unavailable"}', status=503, content_type="application/json")
+
+    django_resp = HttpResponse(resp.content, status=resp.status_code, content_type=resp.headers.get("Content-Type"))
+
+    # Forward Set-Cookie headers exactly
+    set_cookies = []
+    raw_headers = getattr(resp, "raw", None)
+    if raw_headers is not None and hasattr(raw_headers.headers, "getlist"):
+        set_cookies = raw_headers.headers.getlist("Set-Cookie")
+    elif "Set-Cookie" in resp.headers:
+        set_cookies = [resp.headers.get("Set-Cookie")]
+
+    for cookie_header in set_cookies:
+        c = SimpleCookie()
+        c.load(cookie_header)
+        for morsel in c.values():
+            django_resp.set_cookie(
+                morsel.key,
+                morsel.value,
+                expires=morsel["expires"] or None,
+                path=morsel["path"] or "/",
+                domain=morsel["domain"] or None,
+                secure=bool(morsel["secure"]),
+                httponly=bool(morsel["httponly"]),
+                samesite=morsel["samesite"] or None,
+                max_age=morsel["max-age"] or None,
+            )
+
+    return django_resp
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def register(request):
-    """Register new user"""
-    username = request.data.get('username', '').strip()
-    email = request.data.get('email', '').strip()
-    password = request.data.get('password', '')
-    
-    if not username or not email or not password:
-        return Response(
-            {'error': 'username, email, and password required'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    if len(password) < 8:
-        return Response(
-            {'error': 'password must be at least 8 characters'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    try:
-        user = User.objects.create(
-            username=username,
-            email=email,
-            password_hash=hash_password(password)
-        )
-        
-        token = generate_jwt(user.user_id, user.email, user.username)
-        
-        log_activity(user, 'USER_LOGIN', metadata={'via': 'register'})
-        
-        response = Response({
-            'user': {
-                'user_id': user.user_id,
-                'username': user.username,
-                'email': user.email,
-                'is_admin': user.is_admin,
-                'created_at': user.created_at,
-            },
-            'token': token,
-        }, status=status.HTTP_201_CREATED)
-        
-        response.set_cookie(
-            'access_token', token,
-            max_age=settings.JWT_EXP_DAYS * 86400,
-            httponly=True, samesite='Lax',
-        )
-        
-        return response
-        
-    except IntegrityError as e:
-        if 'username' in str(e):
-            return Response({'error': 'username already exists'}, status=status.HTTP_400_BAD_REQUEST)
-        elif 'email' in str(e):
-            return Response({'error': 'email already exists'}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'error': 'registration failed'}, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
+@api_view(["POST"])
 @permission_classes([AllowAny])
 def login(request):
-    """Login user"""
-    username = request.data.get('username', '').strip()
-    password = request.data.get('password', '')
-    
-    if not username or not password:
-        return Response(
-            {'error': 'username and password required'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    try:
-        user = User.objects.get(username=username)
-        
-        if not verify_password(password, user.password_hash):
-            return Response(
-                {'error': 'invalid credentials'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        
-        token = generate_jwt(user.user_id, user.email, user.username)
-        
-        log_activity(user, 'USER_LOGIN')
-        
-        response = Response({
-            'user': {
-                'user_id': user.user_id,
-                'username': user.username,
-                'email': user.email,
-                'is_admin': user.is_admin,
-            },
-            'token': token
-        })
-        
-        response.set_cookie(
-            'access_token', token,
-            max_age=settings.JWT_EXP_DAYS * 86400,
-            httponly=True, samesite='Lax',
-        )
-        
-        return response
-        
-    except User.DoesNotExist:
-        return Response(
-            {'error': 'invalid credentials'},
-            status=status.HTTP_401_UNAUTHORIZED
-        )
+    return _proxy_core("/auth/login/", request, method="POST")
 
 
-@api_view(['POST'])
+@api_view(["POST"])
 @permission_classes([AllowAny])
+def register(request):
+    return _proxy_core("/auth/signup/", request, method="POST")
+
+
+@api_view(["POST"])
 def logout(request):
-    """Logout user"""
-    response = Response({'message': 'logged out successfully'})
-    response.delete_cookie('access_token')
-    return response
+    return _proxy_core("/auth/logout/", request, method="POST")
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
+@api_view(["GET"])
 def verify_token(request):
-    """Verify JWT token from cookie"""
-    token = request.COOKIES.get('access_token')
-    
-    if not token:
-        return Response({'error': 'not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
-    
-    payload = decode_jwt(token)
-    
-    if not payload:
-        return Response({'error': 'invalid or expired token'}, status=status.HTTP_401_UNAUTHORIZED)
-    
-    try:
-        user = User.objects.get(user_id=payload['user_id'])
-        return Response({
-            'user': {
-                'user_id': user.user_id,
-                'username': user.username,
-                'email': user.email,
-                'is_admin': user.is_admin,
-            }
-        })
-    except User.DoesNotExist:
-        return Response({'error': 'user not found'}, status=status.HTTP_404_NOT_FOUND)
+    return _proxy_core("/auth/verify/", request, method="GET")
 
 
-@api_view(['GET'])
+@api_view(["GET"])
+@permission_classes([AllowAny])
 def get_profile(request):
-    """Get current user profile"""
-    return Response({
-        'user': {
-            'user_id': request.user.user_id,
-            'username': request.user.username,
-            'email': request.user.email,
-            'is_admin': request.user.is_admin,
-            'created_at': request.user.created_at,
-            'updated_at': request.user.updated_at
-        }
-    })
+    """
+    Return local auth profile (always available with valid token) and
+    enrich with core profile fields when core /me is reachable.
+    """
+    user = _fetch_core_user(request)
+    if user is None:
+        return Response({"error": "not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    profile = {
+        "user_id": user.user_id,
+        "username": user.username,
+        "is_admin": user.is_admin,
+        "email": user.email,
+    }
+
+    # Best-effort enrichment from core profile; do not fail auth if core is slow/unreachable.
+    url = settings.CORE_AUTH_ME_URL
+    headers = {"Host": settings.CORE_HOST_HEADER}
+    auth = request.META.get("HTTP_AUTHORIZATION")
+    if auth:
+        headers["Authorization"] = auth
+
+    try:
+        resp = requests.get(url, headers=headers, cookies=request.COOKIES, timeout=settings.CORE_AUTH_TIMEOUT)
+        if resp.status_code == 200:
+            try:
+                core_data = resp.json() if resp.content else {}
+            except ValueError:
+                core_data = {}
+            core_user = core_data.get("user", {}) if isinstance(core_data, dict) else {}
+            if isinstance(core_user, dict):
+                for field in ("first_name", "last_name", "age"):
+                    if core_user.get(field) is not None:
+                        profile[field] = core_user.get(field)
+                if not profile.get("email") and core_user.get("email"):
+                    profile["email"] = core_user.get("email")
+    except requests.RequestException:
+        pass
+
+    return Response({"ok": True, "user": profile}, status=status.HTTP_200_OK)

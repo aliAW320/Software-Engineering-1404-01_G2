@@ -14,10 +14,12 @@ const queryClient = new QueryClient({
 })
 
 function App() {
+  const basename = (import.meta.env.VITE_BASE_PATH || '/team8').replace(/\/+$/, '') || '/'
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
+        <BrowserRouter basename={basename}>
           <Routes>
             <Route path="/*" element={<HomePage />} />
             <Route path="/admin" element={<AdminPage />} />

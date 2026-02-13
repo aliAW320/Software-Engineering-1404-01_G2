@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import AuthModal from './auth/AuthModal'
 import { useAuth } from '../hooks/useAuth'
 import NotificationPanel from './notifications/NotificationPanel'
@@ -40,9 +41,9 @@ function HeaderBar({ onShowAuth, hideAdminLink = false }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {isAuthenticated && user?.is_admin && !hideAdminLink && (
-            <a className="btn btn-ghost" href="/admin">
+            <Link className="btn btn-ghost" to="/admin">
               بخش ادمین
-            </a>
+            </Link>
           )}
           {!isAuthenticated ? (
             <>
@@ -74,7 +75,7 @@ function HeaderBar({ onShowAuth, hideAdminLink = false }) {
                 )}
               </button>
               <div className="pill-ghost" onClick={() => setNotifOpen(true)} style={{ cursor: 'pointer' }}>
-                {user?.username}
+                {user?.username || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email}
               </div>
               <button className="btn btn-ghost" onClick={logout}>
                 خروج

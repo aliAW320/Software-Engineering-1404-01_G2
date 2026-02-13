@@ -98,6 +98,8 @@ S3_ENDPOINT_URL = env("S3_ENDPOINT_URL", default="http://localhost:9000")
 S3_ACCESS_KEY = env("S3_ACCESS_KEY", default="minioadmin")
 S3_SECRET_KEY = env("S3_SECRET_KEY", default="minioadmin123")
 S3_BUCKET_NAME = env("S3_BUCKET_NAME", default="team8-media")
+S3_PUBLIC_ENDPOINT = env("S3_PUBLIC_ENDPOINT", default=None)
+S3_PUBLIC_PATH_PREFIX = env("S3_PUBLIC_PATH_PREFIX", default="")
 
 # Upload limits
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -105,8 +107,17 @@ ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"]
 
 # AI Service
-AI_SERVICE_URL = env("AI_SERVICE_URL", default="http://localhost:8002")
+AI_SERVICE_URL = env("AI_SERVICE_URL", default="http://localhost:8001")
 INTERNAL_API_KEY = env("INTERNAL_API_KEY", default="team8-internal-secret-change-me")
+
+# Core authentication (parent app404)
+CORE_API_BASE = env("CORE_API_BASE", default="http://core:8000/api")
+CORE_AUTH_VERIFY_URL = env("CORE_AUTH_VERIFY_URL", default=f"{CORE_API_BASE.rstrip('/')}/auth/verify/")
+CORE_AUTH_ME_URL = env("CORE_AUTH_ME_URL", default=f"{CORE_API_BASE.rstrip('/')}/auth/me/")
+CORE_AUTH_TIMEOUT = env.int("CORE_AUTH_TIMEOUT", default=2)
+CORE_ADMIN_EMAILS = set(env.list("CORE_ADMIN_EMAILS", default=[]))
+CORE_HOST_HEADER = env("CORE_HOST_HEADER", default="localhost")
+CORE_JWT_SECRET = env("CORE_JWT_SECRET", default="dev-only-change-me")
 
 # AI Moderation thresholds
 # Scores above REJECT → REJECTED, between REVIEW and REJECT → PENDING_ADMIN, below REVIEW → APPROVED

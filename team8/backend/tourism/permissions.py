@@ -1,46 +1,122 @@
+import uuid
 import jwt
+import requests
 from django.conf import settings
 from rest_framework.permissions import BasePermission
 from .models import User
 
 
-def _get_user_from_token(request):
-    """Extract and validate JWT from cookie or Authorization header. Attach user to request."""
-    if hasattr(request, '_jwt_user'):
-        return request._jwt_user
+def _extract_auth(request):
+    auth_header = request.META.get("HTTP_AUTHORIZATION")
+    token = request.COOKIES.get("access_token")
+    if not token and auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    return token, auth_header
 
-    token = request.COOKIES.get('access_token')
-    if not token:
-        auth = request.META.get('HTTP_AUTHORIZATION', '')
-        if auth.startswith('Bearer '):
-            token = auth[7:]
 
-    if not token:
-        request._jwt_user = None
-        return None
+def _verify_with_core(request, auth_header):
+    """
+    Fallback auth check against core service.
+    Useful when local JWT verification cannot decode the token (e.g. secret mismatch).
+    """
+    headers = {"Host": settings.CORE_HOST_HEADER}
+    if auth_header:
+        headers["Authorization"] = auth_header
 
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        resp = requests.get(
+            settings.CORE_AUTH_VERIFY_URL,
+            headers=headers,
+            cookies=request.COOKIES,
+            timeout=settings.CORE_AUTH_TIMEOUT,
+        )
+    except requests.RequestException:
+        return None, ""
+
+    if resp.status_code != 200:
+        return None, ""
+
+    return resp.headers.get("X-User-Id"), (resp.headers.get("X-User-Email") or "")
+
+
+def _fetch_core_user(request):
+    """
+    Validate JWT from core (cookie or Authorization) locally using shared secret.
+    No network call; falls back to None if token invalid.
+    """
+    if hasattr(request, "_core_user"):
+        return request._core_user
+
+    token, auth_header = _extract_auth(request)
+
+    if not token:
+        # No bearer/cookie token; do not call core.
+        request._core_user = None
+        return None
+
+    core_id = None
+    email = ""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.CORE_JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        core_id = payload.get("sub")
+        email = payload.get("email") or ""
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        request._jwt_user = None
-        return None
+        # Fallback to core verify endpoint when local decode fails.
+        core_id, email = _verify_with_core(request, auth_header)
+        if not core_id and not email:
+            request._core_user = None
+            return None
 
-    try:
-        user = User.objects.get(user_id=payload['user_id'])
-    except User.DoesNotExist:
-        request._jwt_user = None
-        return None
+    user = None
+    if core_id:
+        user = User.objects.filter(core_user_id=core_id).first()
+    if user is None and email:
+        user = User.objects.filter(email=email).first()
 
-    request._jwt_user = user
+    if user is None:
+        username_seed = email.split("@")[0] if email else f"user-{core_id or uuid.uuid4()}"
+        base = username_seed[:50] or "user"
+        candidate = base
+        counter = 1
+        while User.objects.filter(username=candidate).exists():
+            suffix = f"-{counter}"
+            candidate = f"{base[:50-len(suffix)]}{suffix}"
+            counter += 1
+        user = User.objects.create(
+            username=candidate,
+            email=email or "",
+            password_hash="core-auth",
+            core_user_id=core_id or uuid.uuid4(),
+        )
+    else:
+        changed = False
+        if core_id and not user.core_user_id:
+            user.core_user_id = core_id
+            changed = True
+        if email and user.email != email:
+            user.email = email
+            changed = True
+        if changed:
+            user.save(update_fields=["core_user_id", "email"])
+
+    if email and email in settings.CORE_ADMIN_EMAILS and not user.is_admin:
+        user.is_admin = True
+        user.save(update_fields=["is_admin"])
+
+    request._core_user = user
     request.user = user
     return user
 
 
 class IsAuthenticated(BasePermission):
-    """Standalone JWT authentication via cookie or Bearer header."""
+    """Authenticates by validating core JWT locally and attaching shadow user."""
 
     def has_permission(self, request, view):
-        return _get_user_from_token(request) is not None
+        return _fetch_core_user(request) is not None
 
 
 class IsOwnerOrReadOnly(BasePermission):
@@ -49,15 +125,17 @@ class IsOwnerOrReadOnly(BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.method in ('GET', 'HEAD', 'OPTIONS'):
             return True
-        user = _get_user_from_token(request)
+        user = _fetch_core_user(request)
         return user and obj.user_id == user.user_id
 
 
 class AllowAny(BasePermission):
-    """Allow any access. Optionally attaches user if token present."""
+    """Allow any access. Only touch core if credentials are present."""
 
     def has_permission(self, request, view):
-        _get_user_from_token(request)  # attach user if available, but don't block
+        # Only attempt attach when a token/header is present
+        if request.META.get('HTTP_AUTHORIZATION') or request.COOKIES.get('access_token'):
+            _fetch_core_user(request)
         return True
 
 
@@ -65,5 +143,5 @@ class IsAdmin(BasePermission):
     """Only users with is_admin=True."""
 
     def has_permission(self, request, view):
-        user = _get_user_from_token(request)
+        user = _fetch_core_user(request)
         return user is not None and user.is_admin

@@ -1,0 +1,21 @@
+.git
+.gitignore
+*.pyc
+__pycache__/
+**/__pycache__/
+
+# Local env / artifacts
+.env
+.env.*
+*.log
+
+# Python / JS build caches
+backend/venv
+ai-service/venv-ai
+ai-service/venva
+ai-service/venv
+frontend/node_modules
+frontend/dist
+
+# Misc
+wheelhouse

@@ -1,131 +1,154 @@
+version: "3.9"
+
 services:
-  gateway:
-    image: nginx:alpine
-    ports:
-      - "${TEAM_PORT}:80"
+  backend-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BACKEND_POSTGRES_DB:-backend_db}
+      POSTGRES_USER: ${BACKEND_POSTGRES_USER:-backend_user}
+      POSTGRES_PASSWORD: ${BACKEND_POSTGRES_PASSWORD:-backend_pass}
     volumes:
-      - ./gateway.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - frontend
-      - backend
+      - backend-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BACKEND_POSTGRES_USER:-backend_user} -d ${BACKEND_POSTGRES_DB:-backend_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - app404
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+  ai-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AI_POSTGRES_DB:-ai_db}
+      POSTGRES_USER: ${AI_POSTGRES_USER:-ai_user}
+      POSTGRES_PASSWORD: ${AI_POSTGRES_PASSWORD:-ai_pass}
+    volumes:
+      - ai-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AI_POSTGRES_USER:-ai_user} -d ${AI_POSTGRES_DB:-ai_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app404
+
+  minio:
+    image: ${MINIO_IMAGE:-quay.io/minio/minio:latest}
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_REGION_NAME: ${MINIO_REGION_NAME:-us-east-1}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - app404
+
+  minio-mc:
+    image: quay.io/minio/mc:latest
+    restart: on-failure
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKET: ${S3_BUCKET_NAME:-team8-media}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do echo "Waiting for MinIO..."; sleep 2; done; mc mb -p "local/$MINIO_BUCKET" || true; mc anonymous set download "local/$MINIO_BUCKET" || true; exit 0
+    depends_on:
+      minio:
+        condition: service_started
     networks:
       - app404
 
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    env_file:
-      - .env
+    restart: unless-stopped
     environment:
-      # Backend settings.py expects this name:
-      TEAM8_DATABASE_URL: "${TEAM8_DATABASE_URL}"
-
-      CORE_BASE_URL: "${CORE_BASE_URL}"
-      AI_SERVICE_URL: "http://ai-service:8001"
-
-      # Backend settings.py expects these names:
-      S3_BUCKET_NAME: "${S3_BUCKET_NAME}"
-      S3_ENDPOINT_URL: "http://minio:9000"
-      S3_ACCESS_KEY: "${S3_ACCESS_KEY}"
-      S3_SECRET_KEY: "${S3_SECRET_KEY}"
+      DEBUG: ${DEBUG:-False}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-team8-dev-secret-change-me}
+      BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql://backend_user:backend_pass@backend-db:5432/backend_db}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_PUBLIC_PATH_PREFIX: ${S3_PUBLIC_PATH_PREFIX:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-team8-media}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin123}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8001}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-team8-internal-secret-change-me}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      CORE_ADMIN_EMAILS: ${CORE_ADMIN_EMAILS:-}
+      CORE_JWT_SECRET: ${CORE_JWT_SECRET:-dev-only-change-me}
+      CORE_HOST_HEADER: ${CORE_HOST_HEADER:-localhost}
+      CORE_API_BASE: ${CORE_API_BASE:-http://core:8000/api}
+      CORE_AUTH_VERIFY_URL: ${CORE_AUTH_VERIFY_URL:-http://core:8000/api/auth/verify/}
+      CORE_AUTH_ME_URL: ${CORE_AUTH_ME_URL:-http://core:8000/api/auth/me/}
+      CORE_AUTH_TIMEOUT: ${CORE_AUTH_TIMEOUT:-2}
     depends_on:
-      postgres:
+      backend-db:
         condition: service_healthy
       minio:
         condition: service_started
     networks:
       - app404
+    expose:
+      - "8002"
 
   ai-service:
     build:
       context: ./ai-service
-      dockerfile: Dockerfile
-    env_file:
-      - .env
+    restart: unless-stopped
     environment:
-      AI_DATABASE_URL: "${AI_DATABASE_URL}"
+      AI_DATABASE_URL: ${AI_DATABASE_URL:-postgresql://ai_user:ai_pass@ai-db:5432/ai_db}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:8002}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-team8-internal-secret-change-me}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-team8-media}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin123}
     depends_on:
-      ai-postgres:
+      ai-db:
         condition: service_healthy
+      minio:
+        condition: service_started
+    command: ["/bin/sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8001"]
     networks:
       - app404
+    expose:
+      - "8001"
 
-  # AI service database (separate from backend)
-  ai-postgres:
-    image: postgres:16-alpine
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/team8/api}
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/team8}
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${AI_POSTGRES_DB}
-      POSTGRES_USER: ${AI_POSTGRES_USER}
-      POSTGRES_PASSWORD: ${AI_POSTGRES_PASSWORD}
-    volumes:
-      - ai-pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AI_POSTGRES_USER} -d ${AI_POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-    networks:
-      - app404
-
-  # Official MinIO (no host ports)
-  minio:
-    image: ${MINIO_IMAGE}
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
-      MINIO_REGION_NAME: "${MINIO_REGION_NAME}"
-    command: ["server", "/data", "--console-address", ":9001"]
-    volumes:
-      - minio-data:/data
-    networks:
-      - app404
-
-  # Create bucket automatically (developers don't do extra steps)
-  minio-mc:
-    image: quay.io/minio/mc:latest
-    restart: unless-stopped
-    env_file:
-      - .env
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
-        echo "waiting for minio...";
-        sleep 1;
-      done;
-      mc mb -p "local/$MINIO_BUCKET" || true;
-      tail -f /dev/null
     depends_on:
-      - minio
+      - backend
     networks:
       - app404
+    expose:
+      - "80"
 
-  # If you really use GeoDjango/PostGIS, use postgis image:
-  postgres:
-    image: postgis/postgis:16-3.4-alpine
+  gateway:
+    image: nginx:alpine
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${TEAM8_POSTGRES_DB}
-      POSTGRES_USER: ${TEAM8_POSTGRES_USER}
-      POSTGRES_PASSWORD: ${TEAM8_POSTGRES_PASSWORD}
     volumes:
-      - team8-pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TEAM8_POSTGRES_USER} -d ${TEAM8_POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
+      - ./gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+      - ai-service
+      - minio
     networks:
       - app404
 
@@ -135,7 +158,6 @@ networks:
     name: app404_net
 
 volumes:
-  minio-data:
-  team8-pgdata:
+  backend-pgdata:
   ai-pgdata:
-
+  minio-data:

@@ -7,27 +7,17 @@ export const api = axios.create({
   withCredentials: true,
 })
 
-export const setAuthToken = (token) => {
-  if (token) {
-    localStorage.setItem('team8_token', token)
-    api.defaults.headers.common.Authorization = `Bearer ${token}`
-  } else {
-    localStorage.removeItem('team8_token')
-    delete api.defaults.headers.common.Authorization
-  }
-}
-
-// Initialize from storage on first load
-const saved = localStorage.getItem('team8_token')
-if (saved) {
-  setAuthToken(saved)
-}
+// Core auth lives on the parent app404 at /api/auth/*
+export const coreApi = axios.create({
+  baseURL: '/api/auth',
+  withCredentials: true,
+})
 
 api.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error.response && error.response.status === 401) {
-      setAuthToken(null)
+      // Let hooks handle logout; nothing to clear because we rely on cookies.
     }
     return Promise.reject(error)
   }

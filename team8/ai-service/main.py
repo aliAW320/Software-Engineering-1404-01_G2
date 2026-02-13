@@ -20,14 +20,14 @@ from registry import get_model
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("ai-service")
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8001")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "team8-internal-secret-change-me")
 
 INTERNAL_HEADERS = {"X-Internal-Key": INTERNAL_API_KEY}
 
 # S3 / MinIO client (read-only, to download images for inference)
 
-S3_ENDPOINT = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
+S3_ENDPOINT = os.getenv("S3_ENDPOINT_URL", "http://127.0.0.1:9000")
 S3_ACCESS = os.getenv("S3_ACCESS_KEY", "minioadmin")
 S3_SECRET = os.getenv("S3_SECRET_KEY", "minioadmin123")
 S3_BUCKET = os.getenv("S3_BUCKET_NAME", "team8-media")
@@ -74,6 +74,7 @@ def callback_media_moderation(media_id: str, score: float):
 
 
 def callback_image_tagging(media_id: str, detected_place: str | None, confidence: float):
+    print(f"{detected_place},{confidence}")
     httpx.patch(
         f"{BACKEND_URL}/api/internal/media/{media_id}/tag/",
         json={"detected_place": detected_place, "confidence": confidence},
