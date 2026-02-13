@@ -21,7 +21,14 @@ def get_comment_summarizer():
     return CommentSummarizer()
 
 def get_nsfw_detector():
-    nsfw_pipe = pipeline("image-classification", model=NSFW_MODEL)
+    # Force full weight load on CPU; disable meta tensors that break .to()
+    nsfw_pipe = pipeline(
+        "image-classification",
+        model=NSFW_MODEL,
+        device=0 if DEVICE == "cuda" else -1,
+        model_kwargs={"low_cpu_mem_usage": False},
+        torch_dtype=None,
+    )
     return NSFWDetector(nsfw_pipe)
 
 MODEL_REGISTRY = {
