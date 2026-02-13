@@ -85,6 +85,13 @@ services:
       AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8001}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-team8-internal-secret-change-me}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      CORE_ADMIN_EMAILS: ${CORE_ADMIN_EMAILS:-}
+      CORE_JWT_SECRET: ${CORE_JWT_SECRET:-dev-only-change-me}
+      CORE_HOST_HEADER: ${CORE_HOST_HEADER:-localhost}
+      CORE_API_BASE: ${CORE_API_BASE:-http://core:8000/api}
+      CORE_AUTH_VERIFY_URL: ${CORE_AUTH_VERIFY_URL:-http://core:8000/api/auth/verify/}
+      CORE_AUTH_ME_URL: ${CORE_AUTH_ME_URL:-http://core:8000/api/auth/me/}
+      CORE_AUTH_TIMEOUT: ${CORE_AUTH_TIMEOUT:-2}
     depends_on:
       backend-db:
         condition: service_healthy

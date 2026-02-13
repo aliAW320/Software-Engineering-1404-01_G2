@@ -74,7 +74,7 @@ function HeaderBar({ onShowAuth, hideAdminLink = false }) {
                 )}
               </button>
               <div className="pill-ghost" onClick={() => setNotifOpen(true)} style={{ cursor: 'pointer' }}>
-                {user?.username}
+                {user?.username || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email}
               </div>
               <button className="btn btn-ghost" onClick={logout}>
                 خروج

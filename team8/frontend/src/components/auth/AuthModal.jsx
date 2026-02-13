@@ -3,7 +3,7 @@ import { useAuth } from '../../hooks/useAuth'
 
 function AuthModal({ mode = 'login', onClose }) {
   const [activeTab, setActiveTab] = useState(mode)
-  const [form, setForm] = useState({ username: '', email: '', password: '' })
+  const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const { login, register } = useAuth()
@@ -14,9 +14,14 @@ function AuthModal({ mode = 'login', onClose }) {
     setError('')
     try {
       if (activeTab === 'login') {
-        await login({ username: form.username, password: form.password })
+        await login({ email: form.email, password: form.password })
       } else {
-        await register({ username: form.username, email: form.email, password: form.password })
+        await register({
+          email: form.email,
+          password: form.password,
+          first_name: form.first_name,
+          last_name: form.last_name,
+        })
       }
       onClose()
     } catch (err) {
@@ -50,20 +55,29 @@ function AuthModal({ mode = 'login', onClose }) {
         <form onSubmit={handleSubmit} className="grid" style={{ gap: 12 }}>
           <input
             className="input"
-            placeholder="نام کاربری"
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            type="email"
+            placeholder="ایمیل"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
             required
           />
           {activeTab === 'register' && (
-            <input
-              className="input"
-              type="email"
-              placeholder="ایمیل"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              required
-            />
+            <>
+              <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(120px,1fr))' }}>
+                <input
+                  className="input"
+                  placeholder="نام"
+                  value={form.first_name}
+                  onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                />
+                <input
+                  className="input"
+                  placeholder="نام خانوادگی"
+                  value={form.last_name}
+                  onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                />
+              </div>
+            </>
           )}
           <input
             className="input"
